@@ -1,11 +1,11 @@
-# InsightLens
+# ClauseIQ
 
-> AI-powered insight and analysis platform.
+> Legal Contract NLP Analytics Platform — powered by the CUAD dataset.
 
 ## Project Structure
 
 ```
-insightlens/
+clauseiq/
 ├── backend/      # FastAPI — ML inference, REST API
 └── frontend/     # React + Vite + Tailwind CSS
 ```

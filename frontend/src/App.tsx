@@ -42,7 +42,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4">
       <header className="mb-10 text-center">
-        <h1 className="text-4xl font-bold text-gray-900 tracking-tight">InsightLens</h1>
+        <h1 className="text-4xl font-bold text-gray-900 tracking-tight">ClauseIQ</h1>
         <p className="mt-2 text-gray-500 text-sm">Legal Contract NLP Analytics · CUAD Dataset</p>
       </header>
 

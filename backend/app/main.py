@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import health, analysis, clustering, documents
 
 app = FastAPI(
-    title="InsightLens API",
+    title="ClauseIQ API",
     version="0.1.0",
     description="Legal Contract NLP Analytics — powered by the CUAD dataset",
 )
