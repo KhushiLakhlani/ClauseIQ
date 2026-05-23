@@ -1,8 +1,9 @@
-"""CUAD dataset loader: downloads, parses, and categorises legal contract clauses."""
+"""CUAD dataset loader: parses JSON, maps clause types, and exports processed data."""
 
 from __future__ import annotations
 
-import os
+import json
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -12,8 +13,6 @@ import pandas as pd
 # Clause-type → high-level category mapping
 # ---------------------------------------------------------------------------
 
-# All 41 CUAD question titles (lowercased) mapped to one of 8 categories.
-# Keys are substrings that appear in the CUAD question name; the first match wins.
 _CATEGORY_RULES: list[tuple[str, str]] = [
     # Termination
     ("termination for convenience", "Termination"),
@@ -60,18 +59,24 @@ _CATEGORY_RULES: list[tuple[str, str]] = [
     ("notice period", "Duration"),
     ("post-termination services", "Duration"),
     ("rofr/rofo/rofn", "Duration"),
+    # IP Rights (additional license types)
+    ("non-transferable license", "IP Rights"),
+    ("irrevocable or perpetual", "IP Rights"),
+    ("affiliate license", "IP Rights"),
+    ("unlimited/all-you-can-eat", "IP Rights"),
+    # Liability (additional)
+    ("liquidated damages", "Liability"),
+    # Governance (restrictive covenants)
+    ("no-solicit", "Governance"),
+    ("non-disparagement", "Governance"),
+    ("competitive restriction", "IP Rights"),
+    # Payment (additional)
+    ("volume restriction", "Payment"),
 ]
 
 
 def _map_clause_type(raw_type: str) -> str:
-    """Return the high-level category for a CUAD clause-type label.
-
-    Args:
-        raw_type: The raw CUAD question/label name (any casing).
-
-    Returns:
-        One of the 8 category strings, or ``"Other"`` if no rule matches.
-    """
+    """Return the high-level category for a CUAD clause-type label."""
     lower = raw_type.lower()
     for fragment, category in _CATEGORY_RULES:
         if fragment in lower:
@@ -79,76 +84,92 @@ def _map_clause_type(raw_type: str) -> str:
     return "Other"
 
 
+def _extract_clause_type(question: str) -> str:
+    """Pull the clause-type label from a CUAD question string.
+
+    CUAD questions follow the pattern:
+      'Highlight the parts ... related to "Document Name" that should ...'
+    This extracts the quoted portion.
+    """
+    match = re.search(r'"([^"]+)"', question)
+    if match:
+        return match.group(1)
+    return question.strip()
+
+
 # ---------------------------------------------------------------------------
 # Core loading logic
 # ---------------------------------------------------------------------------
 
-def load_cuad_dataset() -> pd.DataFrame:
-    """Download the CUAD dataset from Hugging Face and return a tidy DataFrame.
+def load_cuad_dataset(json_path: Optional[str | Path] = None) -> pd.DataFrame:
+    """Parse the CUAD JSON file and return a tidy DataFrame.
 
     Each row represents a single positive (annotated) clause span.
 
+    Args:
+        json_path: Path to CUADv1.json. Defaults to data/CUADv1.json
+            relative to the repo root.
+
     Returns:
-        DataFrame with columns:
-        ``contract_id``, ``clause_text``, ``clause_type``, ``source_file``,
-        ``category`` (high-level grouping of *clause_type*).
+        DataFrame with columns: contract_id, clause_text, clause_type,
+        source_file, category.
 
     Raises:
-        ImportError: If the ``datasets`` package is not installed.
-        RuntimeError: If the dataset download or parsing fails.
+        FileNotFoundError: If the JSON file does not exist.
+        RuntimeError: If parsing produces zero records.
     """
-    try:
-        from datasets import load_dataset  # type: ignore[import]
-    except ImportError as exc:
-        raise ImportError(
-            "The 'datasets' package is required to download CUAD. "
-            "Install it with: pip install datasets"
-        ) from exc
+    if json_path is None:
+        json_path = Path(__file__).resolve().parents[3] / "data" / "CUADv1.json"
+    json_path = Path(json_path)
 
-    try:
-        raw = load_dataset("cuad", split="train", trust_remote_code=True)
-    except Exception as exc:
-        raise RuntimeError(
-            f"Failed to download the CUAD dataset from Hugging Face: {exc}"
-        ) from exc
+    if not json_path.exists():
+        raise FileNotFoundError(
+            f"CUAD JSON not found at {json_path}. "
+            "Download it first:\n"
+            "  python -c \"import urllib.request; "
+            "urllib.request.urlretrieve("
+            "'https://raw.githubusercontent.com/TheAtticusProject/cuad/main/data.zip', "
+            "'data/cuad_data.zip')\"\n"
+            "  Then unzip data/cuad_data.zip into data/"
+        )
+
+    with open(json_path, encoding="utf-8") as f:
+        raw = json.load(f)
 
     records: list[dict] = []
 
-    for example in raw:
-        contract_id: str = example.get("id", "")
-        source_file: str = example.get("title", "")
-        context: str = example.get("context", "")
+    for contract in raw.get("data", []):
+        source_file: str = contract.get("title", "")
 
-        qa_pairs: dict = example.get("answers", {})
-        # CUAD stores answers as a dict-of-lists: {"text": [...], "answer_start": [...]}
-        texts: list[str] = qa_pairs.get("text", []) if isinstance(qa_pairs, dict) else []
+        for para in contract.get("paragraphs", []):
+            for qa in para.get("qas", []):
+                if qa.get("is_impossible", True):
+                    continue
 
-        clause_type: str = example.get("question_name", "")
-        if not clause_type:
-            # Fallback: derive from the question field if available
-            clause_type = example.get("question", "")
+                question: str = qa.get("question", "")
+                clause_type = _extract_clause_type(question)
 
-        for span in texts:
-            span = span.strip()
-            if not span:
-                continue
-            records.append(
-                {
-                    "contract_id": contract_id,
-                    "clause_text": span,
-                    "clause_type": clause_type,
-                    "source_file": source_file,
-                    "category": _map_clause_type(clause_type),
-                }
-            )
+                for answer in qa.get("answers", []):
+                    span = answer.get("text", "").strip()
+                    if not span:
+                        continue
+                    records.append({
+                        "contract_id": qa.get("id", ""),
+                        "clause_text": span,
+                        "clause_type": clause_type,
+                        "source_file": source_file,
+                        "category": _map_clause_type(clause_type),
+                    })
 
     if not records:
         raise RuntimeError(
             "Parsed zero clause records from the CUAD dataset. "
-            "The dataset schema may have changed — inspect the raw fields."
+            "The JSON schema may have changed — inspect the raw fields."
         )
 
-    df = pd.DataFrame(records, columns=["contract_id", "clause_text", "clause_type", "source_file", "category"])
+    df = pd.DataFrame(records, columns=[
+        "contract_id", "clause_text", "clause_type", "source_file", "category"
+    ])
     return df
 
 
@@ -161,20 +182,9 @@ def save_processed_data(
     output_dir: Optional[str | Path] = None,
     filename: str = "cuad_processed.csv",
 ) -> Path:
-    """Persist *df* to a CSV file under *output_dir*.
-
-    Args:
-        df: The processed DataFrame returned by :func:`load_cuad_dataset`.
-        output_dir: Directory to write the CSV into. Defaults to
-            ``<repo_root>/data/``.
-        filename: Name of the output file (default: ``cuad_processed.csv``).
-
-    Returns:
-        Absolute :class:`~pathlib.Path` of the written file.
-    """
+    """Persist df to a CSV file under output_dir."""
     if output_dir is None:
-        # Resolve relative to this file: backend/app/services/ → ../../.. → repo root
-        output_dir = Path(__file__).resolve().parents[4] / "data"
+        output_dir = Path(__file__).resolve().parents[3] / "data"
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -189,18 +199,16 @@ def save_processed_data(
 # ---------------------------------------------------------------------------
 
 def print_stats(df: pd.DataFrame) -> None:
-    """Print a human-readable summary of the processed CUAD DataFrame.
-
-    Args:
-        df: DataFrame produced by :func:`load_cuad_dataset`.
-    """
+    """Print a human-readable summary of the processed CUAD DataFrame."""
     total = len(df)
     avg_len = df["clause_text"].str.len().mean()
 
-    print(f"\n{'='*50}")
-    print(f"  CUAD Dataset — Processed Summary")
-    print(f"{'='*50}")
-    print(f"  Total clauses   : {total:,}")
+    print(f"\n{'='*60}")
+    print(f"  ClauseIQ — CUAD Dataset Summary")
+    print(f"{'='*60}")
+    print(f"  Total clauses    : {total:,}")
+    print(f"  Unique contracts : {df['source_file'].nunique():,}")
+    print(f"  Clause types     : {df['clause_type'].nunique()}")
     print(f"  Avg clause length: {avg_len:,.0f} characters")
     print(f"\n  Distribution by category:")
 
@@ -214,26 +222,22 @@ def print_stats(df: pd.DataFrame) -> None:
 
     col_w = max(len(c) for c in dist.index) + 2
     for cat in dist.index:
-        bar = "#" * int(pct[cat] / 2)
+        bar = "█" * int(pct[cat] / 2)
         print(f"    {cat:<{col_w}} {dist[cat]:>6,}  ({pct[cat]:>5.1f}%)  {bar}")
 
-    print(f"{'='*50}\n")
+    print(f"{'='*60}\n")
 
 
 # ---------------------------------------------------------------------------
 # Convenience entry-point
 # ---------------------------------------------------------------------------
 
-def load_and_save(output_dir: Optional[str | Path] = None) -> pd.DataFrame:
-    """Download CUAD, print stats, and persist to CSV in one call.
-
-    Args:
-        output_dir: Passed through to :func:`save_processed_data`.
-
-    Returns:
-        The processed DataFrame.
-    """
-    df = load_cuad_dataset()
+def load_and_save(
+    json_path: Optional[str | Path] = None,
+    output_dir: Optional[str | Path] = None,
+) -> pd.DataFrame:
+    """Parse CUAD JSON, print stats, and persist to CSV in one call."""
+    df = load_cuad_dataset(json_path=json_path)
     print_stats(df)
     save_processed_data(df, output_dir=output_dir)
     return df
