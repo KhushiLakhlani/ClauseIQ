@@ -96,7 +96,6 @@ dist-ssr/
 
 # Project-specific
 data/
-ml_models/
 
 # IDE
 .vscode/

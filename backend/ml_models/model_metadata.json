@@ -1,0 +1,17 @@
+{
+  "test_accuracy": 0.9045207956600362,
+  "train_accuracy": 0.9412190269488153,
+  "cv_f1_mean": 0.8597618135740355,
+  "cv_f1_std": 0.006919839266671803,
+  "categories": [
+    "Duration",
+    "Governance",
+    "IP Rights",
+    "Liability",
+    "Other",
+    "Payment",
+    "Termination"
+  ],
+  "n_train": 11058,
+  "n_test": 2765
+}
