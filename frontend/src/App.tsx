@@ -57,7 +57,11 @@ const SAMPLE_CLAUSES = [
   "All intellectual property developed under this agreement shall be owned by the Company.",
 ]
 
-const API = axios.create({ baseURL: "/api/v1" })
+const API = axios.create({
+  baseURL: import.meta.env.PROD
+    ? "https://clauseiq-sq4w.onrender.com/api/v1"
+    : "/api/v1"
+})
 
 // ---------------------------------------------------------------------------
 // App
@@ -178,7 +182,6 @@ function ClassifyPanel() {
     }
   }
 
-  // Build chart data from results
   const categoryCounts: Record<string, number> = {}
   results.forEach(r => {
     categoryCounts[r.predicted_category] = (categoryCounts[r.predicted_category] || 0) + 1
@@ -189,7 +192,6 @@ function ClassifyPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Input */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
         <h2 className="text-lg font-semibold text-slate-800 mb-4">Classify Contract Clauses</h2>
         <textarea
@@ -219,10 +221,8 @@ function ClassifyPanel() {
         {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
       </div>
 
-      {/* Results */}
       {results.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Chart */}
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
               Category Distribution
@@ -232,9 +232,7 @@ function ClassifyPanel() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis type="number" tick={{ fontSize: 12, fill: "#94a3b8" }} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fill: "#475569" }} width={100} />
-                <Tooltip
-                  contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "13px" }}
-                />
+                <Tooltip contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "13px" }} />
                 <Bar dataKey="count" radius={[0, 6, 6, 0]}>
                   {chartData.map((entry) => (
                     <Cell key={entry.name} fill={CATEGORY_COLORS[entry.name] || "#6b7280"} />
@@ -244,7 +242,6 @@ function ClassifyPanel() {
             </ResponsiveContainer>
           </div>
 
-          {/* Results list */}
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
               Classification Results ({results.length})
@@ -329,7 +326,6 @@ function ExplainPanel() {
 
       {result && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Prediction summary */}
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Prediction</h3>
             <div className="flex items-center gap-4 mb-4">
@@ -343,13 +339,11 @@ function ExplainPanel() {
                 {(result.confidence * 100).toFixed(1)}%
               </span>
             </div>
-            {/* Highlighted text */}
             <div className="p-4 rounded-lg bg-slate-50 text-sm text-slate-700 leading-relaxed">
               {highlightText(result.text, result.top_features)}
             </div>
           </div>
 
-          {/* Feature weights */}
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
               Feature Contributions
@@ -495,7 +489,6 @@ function ClusterPanel() {
 
       {result && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Topics */}
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
               Discovered Topics ({result.n_topics})
@@ -529,7 +522,6 @@ function ClusterPanel() {
             </div>
           </div>
 
-          {/* Assignments */}
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
               Clause Assignments
