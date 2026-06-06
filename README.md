@@ -4,7 +4,6 @@
 
 🔗 **[Live Demo](https://clause-iq-lemon.vercel.app)** · 📡 **[API Docs](https://clauseiq-sq4w.onrender.com/docs)** · 📂 **[GitHub](https://github.com/KhushiLakhlani/ClauseIQ)**
 
-> ⚠️ The backend runs on Render free tier — first request may take ~30s to cold-start.
 
 ## What It Does
 
