@@ -58,27 +58,22 @@ ClauseIQ analyzes legal contract text through three capabilities:
 | **Deployment** | Vercel (frontend), Render (backend) |
 
 ## Architecture
-clauseiq/
-├── backend/
-│   ├── app/
-│   │   ├── main.py                  # FastAPI app + CORS
-│   │   ├── routers/
-│   │   │   ├── analysis.py          # /classify, /classify/batch, /explain
-│   │   │   ├── clustering.py        # /cluster
-│   │   │   ├── health.py            # /health
-│   │   │   └── documents.py         # /documents/upload
-│   │   └── services/
-│   │       ├── classifier.py        # TF-IDF + LR pipeline wrapper
-│   │       ├── explainer.py         # LIME explanation generator
-│   │       ├── clustering.py        # KMeans + NMF topic modeling
-│   │       ├── preprocessor.py      # Legal text cleaning
-│   │       └── data_loader.py       # CUAD dataset parser
-│   ├── train.py                     # Model training pipeline
-│   ├── ml_models/                   # Trained model artifacts
-│   └── tests/                       # 43 unit tests
-├── frontend/
-│   └── src/App.tsx                  # React dashboard
-└── data/                            # CUAD dataset (gitignored)
+
+| Path | Description |
+|------|-------------|
+| `backend/app/main.py` | FastAPI app + CORS configuration |
+| `backend/app/routers/analysis.py` | /classify, /classify/batch, /explain endpoints |
+| `backend/app/routers/clustering.py` | /cluster endpoint |
+| `backend/app/routers/health.py` | /health endpoint |
+| `backend/app/services/classifier.py` | TF-IDF + Logistic Regression pipeline wrapper |
+| `backend/app/services/explainer.py` | LIME explanation generator |
+| `backend/app/services/clustering.py` | KMeans + NMF topic modeling |
+| `backend/app/services/preprocessor.py` | Legal text cleaning |
+| `backend/app/services/data_loader.py` | CUAD dataset parser + category mapping |
+| `backend/train.py` | Model training pipeline |
+| `backend/ml_models/` | Trained model artifacts |
+| `backend/tests/` | 43 unit tests |
+| `frontend/src/App.tsx` | React dashboard (Classify, Explain, Cluster) |
 
 ## API Endpoints
 
