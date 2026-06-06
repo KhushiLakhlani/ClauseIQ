@@ -4,20 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 
 class ClauseCategory(str, Enum):
-    """The eight clause categories derived from the CUAD taxonomy."""
+    """The seven clause categories derived from the CUAD taxonomy."""
 
     TERMINATION = "Termination"
     LIABILITY = "Liability"
     IP_RIGHTS = "IP Rights"
-    CONFIDENTIALITY = "Confidentiality"
-    PAYMENT = "Payment"
     GOVERNANCE = "Governance"
+    PAYMENT = "Payment"
     DURATION = "Duration"
     OTHER = "Other"
 
@@ -32,57 +32,99 @@ class ClausePrediction:
 
 class ClauseClassifier:
     """Multi-class classifier that assigns each contract clause to one of the
-    eight CUAD-derived categories.
+    seven CUAD-derived categories.
 
-    In production this wraps a scikit-learn pipeline (TF-IDF + LogisticRegression
-    or a fine-tuned transformer). The placeholder below returns deterministic
-    stubs so the API is usable before model training.
+    Wraps a trained scikit-learn pipeline (TF-IDF + LogisticRegression).
+    Falls back to a keyword heuristic if no model is loaded.
 
     Usage::
 
         clf = ClauseClassifier()
-        clf.load("ml_models/clause_clf_v1.joblib")
+        clf.load()  # loads default model path
         prediction = clf.predict("Either party may terminate with 30 days notice.")
     """
+
+    _DEFAULT_MODEL_PATH = Path(__file__).resolve().parents[2] / "ml_models" / "clause_classifier.joblib"
 
     def __init__(self) -> None:
         self._model: Any | None = None
         self._is_loaded: bool = False
 
-    def load(self, model_path: str) -> None:
-        """Load a serialised joblib pipeline from *model_path*.
+    @property
+    def is_loaded(self) -> bool:
+        return self._is_loaded
+
+    def load(self, model_path: str | Path | None = None) -> None:
+        """Load a trained joblib pipeline.
 
         Args:
-            model_path: Filesystem path to a ``joblib``-serialised sklearn pipeline.
+            model_path: Path to the .joblib file. Uses default if None.
         """
-        import joblib  # noqa: PLC0415
+        import joblib
 
-        self._model = joblib.load(model_path)
+        path = Path(model_path) if model_path else self._DEFAULT_MODEL_PATH
+
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Model not found at {path}. "
+                "Train it first: cd backend && python train.py"
+            )
+
+        self._model = joblib.load(path)
         self._is_loaded = True
 
     def predict(self, clause_text: str) -> ClausePrediction:
         """Classify a single clause string.
 
         Args:
-            clause_text: Raw or preprocessed clause text.
+            clause_text: Raw contract clause text.
 
         Returns:
             ClausePrediction with predicted category and per-class probabilities.
         """
-        if self._is_loaded and self._model is not None:
-            return self._predict_with_model(clause_text)
-        return self._stub_prediction(clause_text)
+        if not self._is_loaded:
+            try:
+                self.load()
+            except FileNotFoundError:
+                return self._stub_prediction(clause_text)
+
+        return self._predict_with_model(clause_text)
 
     def predict_batch(self, clauses: list[str]) -> list[ClausePrediction]:
-        """Classify a list of clause strings in one call.
+        """Classify a list of clause strings in one call."""
+        if not self._is_loaded:
+            try:
+                self.load()
+            except FileNotFoundError:
+                return [self._stub_prediction(c) for c in clauses]
+
+        proba_matrix = self._model.predict_proba(clauses)
+        classes = self._model.classes_.tolist()
+
+        results = []
+        for i, text in enumerate(clauses):
+            proba = proba_matrix[i]
+            idx = int(np.argmax(proba))
+            results.append(ClausePrediction(
+                text=text,
+                predicted_category=ClauseCategory(classes[idx]),
+                confidence=float(proba[idx]),
+                probabilities={c: float(p) for c, p in zip(classes, proba)},
+            ))
+        return results
+
+    def predict_proba(self, texts: list[str]) -> np.ndarray:
+        """Return raw probability matrix — used by LIME explainer.
 
         Args:
-            clauses: List of clause text strings.
+            texts: List of clause strings.
 
         Returns:
-            List of ClausePrediction objects in the same order as *clauses*.
+            numpy array of shape (n_samples, n_classes).
         """
-        return [self.predict(c) for c in clauses]
+        if not self._is_loaded:
+            self.load()
+        return self._model.predict_proba(texts)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -107,25 +149,21 @@ class ClauseClassifier:
             cat = ClauseCategory.TERMINATION
         elif any(w in lower for w in ("liabil", "indemni", "damages")):
             cat = ClauseCategory.LIABILITY
-        elif any(w in lower for w in ("intellectual", "patent", "copyright", "ip")):
+        elif any(w in lower for w in ("intellectual", "patent", "copyright", "ip", "license")):
             cat = ClauseCategory.IP_RIGHTS
-        elif any(w in lower for w in ("confidential", "proprietary", "secret")):
-            cat = ClauseCategory.CONFIDENTIALITY
-        elif any(w in lower for w in ("payment", "fee", "invoice", "price")):
-            cat = ClauseCategory.PAYMENT
-        elif any(w in lower for w in ("govern", "jurisdiction", "arbitrat")):
+        elif any(w in lower for w in ("govern", "jurisdict", "dispute", "insurance")):
             cat = ClauseCategory.GOVERNANCE
-        elif any(w in lower for w in ("term", "period", "duration", "year", "month")):
+        elif any(w in lower for w in ("pay", "revenue", "audit", "price", "fee")):
+            cat = ClauseCategory.PAYMENT
+        elif any(w in lower for w in ("date", "renew", "notice period", "term of")):
             cat = ClauseCategory.DURATION
         else:
             cat = ClauseCategory.OTHER
 
         uniform = 1.0 / len(ClauseCategory)
-        probs = {c.value: uniform for c in ClauseCategory}
-        probs[cat.value] = 0.7
         return ClausePrediction(
             text=text,
             predicted_category=cat,
-            confidence=0.7,
-            probabilities=probs,
+            confidence=0.6,
+            probabilities={c.value: uniform for c in ClauseCategory},
         )
